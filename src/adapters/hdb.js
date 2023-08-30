@@ -10,7 +10,7 @@ const _ = require("lodash");
 const { flatten } = require("../utils");
 const BaseAdapter = require("./base");
 
-let MongoClient, ObjectId;
+let OHana, Connection;
 
 class HDBAdapter extends BaseAdapter {
 	/**
@@ -35,7 +35,7 @@ class HDBAdapter extends BaseAdapter {
 	 * The adapter has nested-field support.
 	 */
 	get hasNestedFieldSupport() {
-		return true;
+		return false;
 	}
 
 	/**
@@ -51,83 +51,107 @@ class HDBAdapter extends BaseAdapter {
 		}
 
 		try {
-			MongoClient = require("mongodb").MongoClient;
-			ObjectId = require("mongodb").ObjectId;
+			this.OHana = require('ohana-node-orm').ohana;
 		} catch (err) {
 			/* istanbul ignore next */
 			this.broker.fatal(
-				"The 'mongodb' package is missing! Please install it with 'npm install mongodb --save' command.",
+				"The 'ohana-node-orm' package is missing! Please install it with 'npm i ohana-node-orm --save' command.",
 				err,
 				true
 			);
 		}
-
-		this.checkClientLibVersion("mongodb", "^4.0.0");
 	}
 
 	/**
 	 * Connect adapter to database
 	 */
 	async connect() {
-		const uri = this.opts.uri || "mongodb://localhost:27017";
+		this.Connection = require('ohana-node-orm').connection;
 
-		this.storeKey = `mongodb|${uri}`;
-		this.client = this.getClientFromGlobalStore(this.storeKey);
-		if (!this.client) {
-			this.logger.debug(`MongoDB adapter is connecting to '${uri}'...`);
-			this.client = new MongoClient(uri, this.opts.mongoClientOptions);
-
-			this.logger.debug("Store the created MongoDB client", this.storeKey);
-			this.setClientToGlobalStore(this.storeKey, this.client);
-
-			this.client.on("open", () => this.logger.info(`MongoDB client has connected.`));
-			this.client.on("close", () => this.logger.warn("MongoDB client has disconnected."));
-			this.client.on("error", err => this.logger.error("MongoDB error.", err));
-			try {
-				// Connect the client to the server
-				await this.client.connect();
-			} catch (err) {
-				// We remove the client from the global store if the connection failed because of reconnecting
-				this.removeAdapterFromClientGlobalStore(this.storeKey);
-				throw err;
-			}
-		} else {
-			this.logger.debug("Using an existing MongoDB client", this.storeKey);
-			if (!this.client.topology || !this.client.topology.isConnected()) {
-				this.logger.debug("Waiting for the connected state of MongoDB client...");
-				// This silent timer blocks the process to avoid exiting while wait for connecting
-				const emptyTimer = setInterval(() => {}, 1000);
-				await new this.Promise(resolve => {
-					this.client.once("open", () => {
-						clearInterval(emptyTimer);
-						resolve();
-					});
-				});
-			}
+		const connectionParams = {
+			// host: process.env.SAP_HDB_URL,
+			// port: process.env.SAP_HDB_PORT,
+			// user: process.env.SAP_HDB_UID,
+			// password: process.env.SAP_HDB_PASSWORD,
+			// dbname: process.env.SAP_HDB_DBNAME
+			host: '840a2cbd-bda1-450a-b3ec-78f7fb740362.hana.trial-us10.hanacloud.ondemand.com',
+			port: '443',
+			user: 'USER1',
+			password: 'Password1',
+			currentSchema: 'ADDTAX'				
 		}
 
-		if (this.opts.dbName) {
-			// Select DB and verify connection
-			this.logger.debug("Selecting database:", this.opts.dbName);
-			this.db = this.client.db(this.opts.dbName, this.opts.dbOptions);
-		} else {
-			// Using database from connection URI
-			this.db = this.client.db();
-		}
-		await this.db.command({ ping: 1 });
-		this.logger.debug("Database selected successfully.");
+		this.Connection.connect(connectionParams)
+		.then((success) => {
+			this.client = this.Connection;
+			this.logger.debug('Connected');
+			console.log("SUCESSO");
+		})
+		.catch((error) => {
+			this.logger.error('Error', error);
+			console.log("ERRO");
+		})
+		// const uri = this.opts.uri || "mongodb://localhost:27017";
 
-		this.logger.debug("Open collection:", this.opts.collection);
-		this.collection = this.db.collection(this.opts.collection);
+		// this.storeKey = `mongodb|${uri}`;
+		// this.client = this.getClientFromGlobalStore(this.storeKey);
+		// if (!this.client) {
+		// 	this.logger.debug(`MongoDB adapter is connecting to '${uri}'...`);
+		// 	this.client = new MongoClient(uri, this.opts.mongoClientOptions);
+
+		// 	this.logger.debug("Store the created MongoDB client", this.storeKey);
+		// 	this.setClientToGlobalStore(this.storeKey, this.client);
+
+		// 	this.client.on("open", () => this.logger.info(`MongoDB client has connected.`));
+		// 	this.client.on("close", () => this.logger.warn("MongoDB client has disconnected."));
+		// 	this.client.on("error", err => this.logger.error("MongoDB error.", err));
+		// 	try {
+		// 		// Connect the client to the server
+		// 		await this.client.connect();
+		// 	} catch (err) {
+		// 		// We remove the client from the global store if the connection failed because of reconnecting
+		// 		this.removeAdapterFromClientGlobalStore(this.storeKey);
+		// 		throw err;
+		// 	}
+		// } else {
+		// 	this.logger.debug("Using an existing MongoDB client", this.storeKey);
+		// 	if (!this.client.topology || !this.client.topology.isConnected()) {
+		// 		this.logger.debug("Waiting for the connected state of MongoDB client...");
+		// 		// This silent timer blocks the process to avoid exiting while wait for connecting
+		// 		const emptyTimer = setInterval(() => {}, 1000);
+		// 		await new this.Promise(resolve => {
+		// 			this.client.once("open", () => {
+		// 				clearInterval(emptyTimer);
+		// 				resolve();
+		// 			});
+		// 		});
+		// 	}
+		// }
+
+		// if (this.opts.dbName) {
+		// 	// Select DB and verify connection
+		// 	this.logger.debug("Selecting database:", this.opts.dbName);
+		// 	this.db = this.client.db(this.opts.dbName, this.opts.dbOptions);
+		// } else {
+		// 	// Using database from connection URI
+		// 	this.db = this.client.db();
+		// }
+		// await this.db.command({ ping: 1 });
+		// this.logger.debug("Database selected successfully.");
+
+		// this.logger.debug("Open collection:", this.opts.collection);
+		// this.collection = this.db.collection(this.opts.collection);
 	}
 
 	/**
 	 * Disconnect adapter from database
 	 */
 	async disconnect() {
-		if (this.client) {
-			if (this.removeAdapterFromClientGlobalStore(this.storeKey)) await this.client.close();
-		}
+		if(this.Connection)
+			this.Connection.disconnect();
+		// if (this.client) {
+		// 	if (this.removeAdapterFromClientGlobalStore(this.storeKey)) await this.client.close();
+		// }
 	}
 
 	/**
@@ -226,7 +250,9 @@ class HDBAdapter extends BaseAdapter {
 	 *
 	 */
 	count(params) {
-		return this.createQuery(params, { counting: true });
+		return this.count(params);
+		//return this.createQuery(params, { counting: true });
+
 	}
 
 	/**
