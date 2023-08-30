@@ -13,6 +13,7 @@ const Adapters = {
 	Base: require("./base"),
 	Knex: require("./knex"),
 	MongoDB: require("./mongodb"),
+	HDB: require("./hdb.js"),
 	NeDB: require("./nedb")
 };
 
