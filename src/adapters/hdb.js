@@ -65,22 +65,27 @@ class HDBAdapter extends BaseAdapter {
 	/**
 	 * Connect adapter to database
 	 */
-	 connect() {
+	async connect() {
 		if(!this.connectionObj){
-			let connParams = {
-				serverNode: '840a2cbd-bda1-450a-b3ec-78f7fb740362.hana.trial-us10.hanacloud.ondemand.com:443',
-				uid: 'USER1',
-				pwd: 'Password1'
+			try{
+				let connParams = {
+					serverNode: '840a2cbd-bda1-450a-b3ec-78f7fb740362.hana.trial-us10.hanacloud.ondemand.com:443',
+					uid: 'USER1',
+					pwd: 'Password1'
+				}
+				this.connectionObj = this.hanaClientObj.createConnection();
+				this.connectionObj.connect(connParams);
+			}catch(err){
+				let tt = '';
+				console.log(err);
 			}
-			this.connectionObj = this.hanaClientObj.createConnection();
-			this.connectionObj.connect(connParams);
 		}
 	}
 
 	/**
 	 * Disconnect adapter from database
 	 */
-	disconnect() {
+	async disconnect() {
 		if(this.connectionObj){
 			this.connectionObj.disconnect();
 			this.connectionObj = undefined;
