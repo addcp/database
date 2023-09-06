@@ -44,6 +44,7 @@ class HDBAdapter extends BaseAdapter {
 	 * @param {Service} service
 	 */
 	 init(service) {
+		debugger;
 		super.init(service);
 
 		if (!this.opts.collection) {
@@ -66,17 +67,17 @@ class HDBAdapter extends BaseAdapter {
 	 * Connect adapter to database
 	 */
 	async connect() {
+		debugger;
 		if(!this.connectionObj){
 			try{
 				let connParams = {
-					serverNode: '840a2cbd-bda1-450a-b3ec-78f7fb740362.hana.trial-us10.hanacloud.ondemand.com:443',
-					uid: 'USER1',
-					pwd: 'Password1'
+					serverNode: this.opts.host,
+					uid: this.opts.user,
+					pwd: this.opts.password
 				}
 				this.connectionObj = this.hanaClientObj.createConnection();
 				this.connectionObj.connect(connParams);
 			}catch(err){
-				let tt = '';
 				console.log(err);
 			}
 		}
@@ -189,7 +190,27 @@ class HDBAdapter extends BaseAdapter {
 	 *
 	 */
 	count(params) {
-		return this.connectionObj.exec('select count(*) from ADDTAX.TAXD0000');
+		debugger;
+		let schema = this.opts?.schema ? this.opts.schema : undefined;
+		let table = this.opts?.collection ? this.opts.collection : undefined;
+		let sqlQuery = 'select count(*) from ' + schema + '.' + table; //Ex: 'select count(*) from ADDTAX.TAXD0000'
+		let queryResult;
+		try{
+			queryResult = this.connectionObj.exec(sqlQuery); //Ex: [{COUNT(*): 1}]
+		}catch(err){
+			//TODO: Tratar erro de query
+		}
+		if(queryResult){
+			try{
+				return Object.values(queryResult[0])[0];
+			}catch(err){
+				//TODO: Tratar erro de resultado
+			}
+		}
+
+		return 0; 
+
+		//return this.connectionObj.exec('select count(*) from ADDTAX.TAXD0000');
 
 	}
 
