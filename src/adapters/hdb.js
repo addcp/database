@@ -119,7 +119,6 @@ class HDBAdapter extends BaseAdapter {
 	 * @returns {Promise<Array>}
 	 */
 	find(params) {
-		debugger;
 		let schema = this.opts?.schema ? this.opts.schema : undefined;
 		let table = this.opts?.collection ? this.opts.collection : undefined;
 		let sqlQuery = 'select * from ' + schema + '.' + table; //Ex: 'select * from ADDTAX.TAXD0000'
@@ -244,8 +243,8 @@ class HDBAdapter extends BaseAdapter {
 		this.service.$fields.forEach((field) => {
 			//if(entity[field.columnName] && field.columnName != "_id"){
 			if(entity[field.columnName]){
-				queryFields = '' + queryFields + field.columnName + ', ';
-				if(field.columnType == 'string')
+				queryFields = '' + queryFields + this.columnName(field.columnName) + ', ';
+				if(field.columnType == 'string' || field.columnType == 'email')
 					queryValues = '' + queryValues + "'" + entity[field.columnName] + "', ";
 				else
 					queryValues = '' + queryValues + entity[field.columnName] + ', ';
@@ -307,16 +306,16 @@ class HDBAdapter extends BaseAdapter {
 			Object.entries(changes).forEach(([key, value]) => {
 				let keyDef = this.service.$fields.find((elem) => elem?.columnName == key);
 				let keyIsString = false;
-				if(keyDef && keyDef?.columnType == 'string')
+				if(keyDef && (keyDef?.columnType == 'string' || keyDef?.columnType == 'email') )
 					keyIsString = true;
 				if(keyIsString)
-					setString = setString + ' ' + key + "='" + value + "',"
+					setString = setString + ' ' + this.columnName(key) + "='" + value + "',"
 				else
-				setString = setString + ' ' + key + "=" + value + ","
+				setString = setString + ' ' + this.columnName(key) + "=" + value + ","
 			});
 			if(setString){
 				setString = setString.substring(0, setString.length - 1);
-				let sqlQuery = "UPDATE " + schema + '.' + table + " SET " + setString + "WHERE _ID = '" + id + "'"; //Ex.: UPDATE ADDTAX.TAXD0000 SET DOMIN = 'SP 3550308', PROCX='03500' WHERE _ID = '26b812d0-51a7-11ee-94c4-e7045b3b40cd' 				
+				let sqlQuery = "UPDATE " + schema + '.' + table + " SET " + setString + " WHERE _ID = '" + id + "'"; //Ex.: UPDATE ADDTAX.TAXD0000 SET DOMIN = 'SP 3550308', PROCX='03500' WHERE _ID = '26b812d0-51a7-11ee-94c4-e7045b3b40cd' 				
 				let insertResult;
 				try{
 					insertResult = this.connectionObj.exec(sqlQuery); //Ex: [{COUNT(*): 1}]
@@ -390,8 +389,21 @@ class HDBAdapter extends BaseAdapter {
 	 *
 	 */
 	async removeById(id) {
-		await this.collection.findOneAndDelete({ _id: this.stringToObjectID(id) });
+		let schema = this.opts?.schema ? this.opts.schema : undefined;
+		let table = this.opts?.collection ? this.opts.collection : undefined;
+		let sqlQuery = 'DELETE FROM ' + schema + '.' + table + " WHERE _ID = '" + id + "'"; //Ex: 'INSERT INTO ADDTAX.TAXD0000(id, indoc) VALUES(12321231, 1)'
+		let deleteResult;
+		try{
+			deleteResult = this.connectionObj.exec(sqlQuery); //Ex: [{COUNT(*): 1}]
+		}catch(err){
+			//TODO: Tratar erro de query
+		}
+		if(deleteResult){
+			return id;
+		}
 		return id;
+		//await this.collection.findOneAndDelete({ _id: this.stringToObjectID(id) });
+		// return id;
 	}
 
 	/**
@@ -616,55 +628,65 @@ class HDBAdapter extends BaseAdapter {
 			Object.entries(query).forEach(([key, value]) => {
 				let keyDef = this.service.$fields.find((elem) => elem?.columnName == key);
 				let keyIsString = false;
-				if(key == 'id' || key == '_id'){
-					key = '_ID';
+				let keyColumn = this.columnName(key);
+				if(keyColumn == 'id' || keyColumn == '_id' || keyColumn == '_ID' || keyColumn == 'ID')
 					keyIsString = true;
-				}
 				if(keyDef && keyDef?.columnType == 'string')
 					keyIsString = true;
+				if(keyDef && keyDef?.columnType == 'email')
+					keyIsString = true;
 				if (typeof value == "object" && value != null) {
-					if (value.$in && Array.isArray(value.$in)) {
+					if (value.$in && Array.isArray(value.$in) && value.$in.length > 0) {
 						//q = q.whereIn(key, value.$in);
-						q = q + 'IMPLEMENTAR';
+						//q = q + 'IMPLEMENTAR';
+						q = q + keyColumn + " IN (";
+						Object.values(value.$in).forEach((vval) => {
+							if(keyIsString)
+								q = q + "'" + vval + "', "
+							else
+								q = q + vval + ", "
+						});
+						q = q.substring(0, q.length - 2);
+						q = q + ") AND ";
 					} else if (value.$nin && Array.isArray(value.$nin)) {
 						//q = q.whereNotIn(key, value.$nin);
 						q = q + 'IMPLEMENTAR';
 					} else if (value.$gt) {
 						//q = q.where(key, ">", value.$gt);
 						if(keyIsString)
-							q = q + key + " > '" + value.$gt + "' AND ";
+							q = q + keyColumn + " > '" + value.$gt + "' AND ";
 						else
-							q = q + key + ' > ' + value.$gt + ' AND ';
+							q = q + keyColumn + ' > ' + value.$gt + ' AND ';
 					} else if (value.$gte) {
 						//q = q.where(key, ">=", value.$gte);
 						if(keyIsString)
-							q = q + key + " >= '" + value.$gte + "' AND ";
+							q = q + keyColumn + " >= '" + value.$gte + "' AND ";
 						else
-							q = q + key + ' >= ' + value.$gte + ' AND ';
+							q = q + keyColumn + ' >= ' + value.$gte + ' AND ';
 					} else if (value.$lt) {
 						//q = q.where(key, "<", value.$lt);
 						if(keyIsString)
-							q = q + key + " < '" + value.$lt + "' AND ";
+							q = q + keyColumn + " < '" + value.$lt + "' AND ";
 						else
-							q = q + key + ' < ' + value.$lt + ' AND ';
+							q = q + keyColumn + ' < ' + value.$lt + ' AND ';
 					} else if (value.$lte) {
 						//q = q.where(key, "<=", value.$lte);
 						if(keyIsString)
-							q = q + key + " <= '" + value.$lte + "' AND ";
+							q = q + keyColumn + " <= '" + value.$lte + "' AND ";
 						else
-							q = q + key + ' <= ' + value.$lte + ' AND ';
+							q = q + keyColumn + ' <= ' + value.$lte + ' AND ';
 					} else if (value.$eq) {
 						//q = q.where(key, "=", value.$eq);
 						if(keyIsString)
-							q = q + key + " = '" + value.$eq + "' AND ";
+							q = q + keyColumn + " = '" + value.$eq + "' AND ";
 						else
-							q = q + key + ' = ' + value.$eq + ' AND ';
+							q = q + keyColumn + ' = ' + value.$eq + ' AND ';
 					} else if (value.$ne) {
 						//q = q.where(key, "=", value.$ne);
 						if(keyIsString)
-							q = q + key + " != '" + value.$ne + "' AND ";
+							q = q + keyColumn + " != '" + value.$ne + "' AND ";
 						else
-							q = q + key + ' != ' + value.$ne + ' AND ';
+							q = q + keyColumn + ' != ' + value.$ne + ' AND ';
 					} else if (value.$exists === true) {
 						//q = q.whereNotNull(key);
 						q = q + 'IMPLEMENTAR';
@@ -683,9 +705,12 @@ class HDBAdapter extends BaseAdapter {
 				} else {
 					//q = q.where(key, value);
 					if(keyIsString)
-						q = q + key + " = '" + value + "' AND ";
-					else
-						q = q + key + ' = ' + value + ' AND ';
+						q = q + keyColumn + " = '" + value + "' AND ";
+					else{
+						if(key != 'DELETED')
+							q = q + keyColumn + ' = ' + value + ' AND ';
+						
+					}
 				}
 			});
 
@@ -730,6 +755,20 @@ class HDBAdapter extends BaseAdapter {
 		}
 		else
 			return '';
+	}
+
+	//Indica campos que devem ser tratados como condicionais
+	columnName(fieldName) {
+		switch (fieldName) {
+			case 'EMAIL':
+				return '"EMAIL"';
+			case 'id':
+			case '_id': 
+			case 'ID':
+				return '_ID';
+			default: 
+				return fieldName;
+		}
 	}
 }
 
