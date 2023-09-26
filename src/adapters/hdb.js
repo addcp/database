@@ -119,6 +119,8 @@ class HDBAdapter extends BaseAdapter {
 	 * @returns {Promise<Array>}
 	 */
 	find(params) {
+		if(this.service.name == "TAXDFS" || this.service.name == "JOB0100")
+			debugger;
 		let schema = this.opts?.schema ? this.opts.schema : undefined;
 		let table = this.opts?.collection ? this.opts.collection : undefined;
 		let sqlQuery = 'select * from ' + schema + '.' + table; //Ex: 'select * from ADDTAX.TAXD0000'
@@ -132,6 +134,19 @@ class HDBAdapter extends BaseAdapter {
 		if(response)
 			response.forEach((elem) => {
 				elem._id = elem._ID;	
+				Object.entries(elem).forEach(([key, value]) => {
+					let keyDef = this.service.$fields.find((elem) => elem?.columnName == key);
+					if(keyDef){
+						if(keyDef?.columnType == "object"){
+							try{
+								elem[key] = Buffer.from(elem[key], 'base64').toString('utf-8');
+								elem[key] = JSON.parse(elem[key]);
+							}catch (err){
+								//NADA A FAZER
+							}
+						}
+					}
+				});
 			});
 		return response;
 		// return this.createQuery(params).toArray();
@@ -202,10 +217,17 @@ class HDBAdapter extends BaseAdapter {
 	 *
 	 */
 	count(params) {
-		debugger;
+		if(this.service.name == "TAXDFS" || this.service.name == "JOB0100")
+			debugger;
 		let schema = this.opts?.schema ? this.opts.schema : undefined;
 		let table = this.opts?.collection ? this.opts.collection : undefined;
 		let sqlQuery = 'select count(*) from ' + schema + '.' + table; //Ex: 'select count(*) from ADDTAX.TAXD0000'
+		if(params?.query){
+			let query = this.createQuery(params);
+			if(query)
+				sqlQuery = sqlQuery + ' ' + query;
+		}
+
 		let queryResult;
 		try{
 			queryResult = this.connectionObj.exec(sqlQuery); //Ex: [{COUNT(*): 1}]
@@ -234,7 +256,9 @@ class HDBAdapter extends BaseAdapter {
 	 *
 	 */
 	async insert(entity) {
-		debugger;
+		if(this.service.name == "TAXDFS" || this.service.name == "JOB0100")
+			debugger;
+		
 		let schema = this.opts?.schema ? this.opts.schema : undefined;
 		let table = this.opts?.collection ? this.opts.collection : undefined;
 		let queryFields = '';
@@ -244,10 +268,26 @@ class HDBAdapter extends BaseAdapter {
 			//if(entity[field.columnName] && field.columnName != "_id"){
 			if(entity[field.columnName]){
 				queryFields = '' + queryFields + this.columnName(field.columnName) + ', ';
-				if(field.columnType == 'string' || field.columnType == 'email')
-					queryValues = '' + queryValues + "'" + entity[field.columnName] + "', ";
-				else
-					queryValues = '' + queryValues + entity[field.columnName] + ', ';
+				switch (field.columnType) {
+					case "string":
+					case "email":
+						queryValues = '' + queryValues + "'" + entity[field.columnName] + "', ";
+						break;
+					case "object":
+						let fieldObjValue = '';
+						if (typeof entity[field.columnName] == "object" && entity[field.columnName] != null)
+							fieldObjValue = JSON.stringify(entity[field.columnName]);
+						else 
+							fieldObjValue = entity[field.columnName];
+						queryValues = '' + queryValues + "'" + Buffer.from(fieldObjValue).toString('base64') + "', ";
+						break;
+					default:
+						queryValues = '' + queryValues + entity[field.columnName] + ', ';
+				}
+				// if(field.columnType == 'string' || field.columnType == 'email')
+				// 	queryValues = '' + queryValues + "'" + entity[field.columnName] + "', ";
+				// else
+				// 	queryValues = '' + queryValues + entity[field.columnName] + ', ';
 			}
 		
 		});
@@ -259,7 +299,7 @@ class HDBAdapter extends BaseAdapter {
 		let sqlQuery = 'insert into ' + schema + '.' + table + '(' + queryFields + ') VALUES(' + queryValues + ')'; //Ex: 'INSERT INTO ADDTAX.TAXD0000(id, indoc) VALUES(12321231, 1)'
 		let insertResult;
 		try{
-			insertResult = this.connectionObj.exec(sqlQuery); //Ex: [{COUNT(*): 1}]
+			insertResult = await this.connectionObj.exec(sqlQuery); //Ex: [{COUNT(*): 1}]
 		}catch(err){
 			//TODO: Tratar erro de query
 		}
@@ -299,6 +339,8 @@ class HDBAdapter extends BaseAdapter {
 	 *
 	 */
 	async updateById(id, changes, opts) {
+		if(this.service.name == "TAXDFS" || this.service.name == "JOB0100")
+			debugger;
 		if(id){
 			let schema = this.opts?.schema ? this.opts.schema : undefined;
 			let table = this.opts?.collection ? this.opts.collection : undefined;
@@ -627,89 +669,146 @@ class HDBAdapter extends BaseAdapter {
 
 			Object.entries(query).forEach(([key, value]) => {
 				let keyDef = this.service.$fields.find((elem) => elem?.columnName == key);
-				let keyIsString = false;
-				let keyColumn = this.columnName(key);
-				if(keyColumn == 'id' || keyColumn == '_id' || keyColumn == '_ID' || keyColumn == 'ID')
-					keyIsString = true;
-				if(keyDef && keyDef?.columnType == 'string')
-					keyIsString = true;
-				if(keyDef && keyDef?.columnType == 'email')
-					keyIsString = true;
-				if (typeof value == "object" && value != null) {
-					if (value.$in && Array.isArray(value.$in) && value.$in.length > 0) {
-						//q = q.whereIn(key, value.$in);
-						//q = q + 'IMPLEMENTAR';
-						q = q + keyColumn + " IN (";
-						Object.values(value.$in).forEach((vval) => {
-							if(keyIsString)
-								q = q + "'" + vval + "', "
+				if(keyDef){
+					let keyIsString = false;
+					let keyColumn = this.columnName(key);
+					let keyValue = this.columnValue(keyDef, value);
+					// if(keyColumn == 'id' || keyColumn == '_id' || keyColumn == '_ID' || keyColumn == 'ID')
+					// 	keyIsString = true;
+					// if(keyDef && keyDef?.columnType == 'string')
+					// 	keyIsString = true;
+					// if(keyDef && keyDef?.columnType == 'email')
+					// 	keyIsString = true;
+					if (typeof value == "object" && value != null) {
+						if (value.$in && Array.isArray(value.$in) && value.$in.length > 0) {
+							//q = q.whereIn(key, value.$in);
+							//q = q + 'IMPLEMENTAR';
+							if(keyDef.columnType == 'boolean' && 
+								(value.$in.includes(undefined) || value.$in.includes('undefined') ||
+								value.$in.includes('null') || value.$in.includes('NULL') || value.$in.includes(null)))
+								q = q + "( " + keyColumn + " IN (";
 							else
-								q = q + vval + ", "
-						});
-						q = q.substring(0, q.length - 2);
-						q = q + ") AND ";
-					} else if (value.$nin && Array.isArray(value.$nin)) {
-						//q = q.whereNotIn(key, value.$nin);
-						q = q + 'IMPLEMENTAR';
-					} else if (value.$gt) {
-						//q = q.where(key, ">", value.$gt);
-						if(keyIsString)
-							q = q + keyColumn + " > '" + value.$gt + "' AND ";
-						else
-							q = q + keyColumn + ' > ' + value.$gt + ' AND ';
-					} else if (value.$gte) {
-						//q = q.where(key, ">=", value.$gte);
-						if(keyIsString)
-							q = q + keyColumn + " >= '" + value.$gte + "' AND ";
-						else
-							q = q + keyColumn + ' >= ' + value.$gte + ' AND ';
-					} else if (value.$lt) {
-						//q = q.where(key, "<", value.$lt);
-						if(keyIsString)
-							q = q + keyColumn + " < '" + value.$lt + "' AND ";
-						else
-							q = q + keyColumn + ' < ' + value.$lt + ' AND ';
-					} else if (value.$lte) {
-						//q = q.where(key, "<=", value.$lte);
-						if(keyIsString)
-							q = q + keyColumn + " <= '" + value.$lte + "' AND ";
-						else
-							q = q + keyColumn + ' <= ' + value.$lte + ' AND ';
-					} else if (value.$eq) {
-						//q = q.where(key, "=", value.$eq);
-						if(keyIsString)
-							q = q + keyColumn + " = '" + value.$eq + "' AND ";
-						else
-							q = q + keyColumn + ' = ' + value.$eq + ' AND ';
-					} else if (value.$ne) {
-						//q = q.where(key, "=", value.$ne);
-						if(keyIsString)
-							q = q + keyColumn + " != '" + value.$ne + "' AND ";
-						else
-							q = q + keyColumn + ' != ' + value.$ne + ' AND ';
-					} else if (value.$exists === true) {
-						//q = q.whereNotNull(key);
-						q = q + 'IMPLEMENTAR';
-					} else if (value.$exists === false) {
-						//q = q.whereNull(key);
-						q = q + 'IMPLEMENTAR';
-					} else if (value.$raw) {
-						if (typeof value.$raw == "string") {
-							//q = q.whereRaw(value.$raw);
+								q = q + keyColumn + " IN (";
+							Object.values(value.$in).forEach((vval) => {
+								let currentValue = this.columnValue(keyDef, vval);
+								if(!(keyDef.columnType == 'boolean' && currentValue == "IS NULL"))
+									q = q + currentValue + ", "
+							});
+							//No caso de boolean, pode ter apenas valores nulos resultando em um array vazio
+							//Nesses casos é tratado na próxima parte
+							if(q.substring(q.length -4, q.length) != "IN (")
+								q = q.substring(0, q.length - 2);
+
+							if(keyDef.columnType == 'boolean' && 
+								(value.$in.includes(undefined) || value.$in.includes('undefined') ||
+								value.$in.includes('null') || value.$in.includes('NULL') || value.$in.includes(null))){
+								
+									if(q.substring(q.length -4, q.length) != "IN (")
+										q = q + ") OR " + keyColumn + " IS NULL) AND ";
+									else
+										q = q.substring(0, q.length - 4) + " IS NULL) AND "
+							}
+							else 
+								q = q + ") AND ";
+						} else if (value.$nin && Array.isArray(value.$nin)) {
+							//q = q.whereNotIn(key, value.$nin);
 							q = q + 'IMPLEMENTAR';
-						} else if (typeof value.$raw == "object") {
-							//q = q.whereRaw(value.$raw.condition, value.$raw.bindings);
+						} else if (value.$gt) {
+							//q = q.where(key, ">", value.$gt);
+							if(keyIsString)
+								q = q + keyColumn + " > '" + value.$gt + "' AND ";
+							else
+								q = q + keyColumn + ' > ' + value.$gt + ' AND ';
+						} else if (value.$gte) {
+							//q = q.where(key, ">=", value.$gte);
+							if(keyIsString)
+								q = q + keyColumn + " >= '" + value.$gte + "' AND ";
+							else
+								q = q + keyColumn + ' >= ' + value.$gte + ' AND ';
+						} else if (value.$lt) {
+							//q = q.where(key, "<", value.$lt);
+							if(keyIsString)
+								q = q + keyColumn + " < '" + value.$lt + "' AND ";
+							else
+								q = q + keyColumn + ' < ' + value.$lt + ' AND ';
+						} else if (value.$lte) {
+							//q = q.where(key, "<=", value.$lte);
+							if(keyIsString)
+								q = q + keyColumn + " <= '" + value.$lte + "' AND ";
+							else
+								q = q + keyColumn + ' <= ' + value.$lte + ' AND ';
+						} else if (value.$eq) {
+							//q = q.where(key, "=", value.$eq);
+							if(keyIsString)
+								q = q + keyColumn + " = '" + value.$eq + "' AND ";
+							else
+								q = q + keyColumn + ' = ' + value.$eq + ' AND ';
+						} else if (value.$ne) {
+							//q = q.where(key, "=", value.$ne);
+							if(keyIsString)
+								q = q + keyColumn + " != '" + value.$ne + "' AND ";
+							else
+								q = q + keyColumn + ' != ' + value.$ne + ' AND ';
+						} else if (value.$exists === true) {
+							//q = q.whereNotNull(key);
 							q = q + 'IMPLEMENTAR';
+						} else if (value.$exists === false) {
+							//q = q.whereNull(key);
+							q = q + 'IMPLEMENTAR';
+						} else if (value.$raw) {
+							if (typeof value.$raw == "string") {
+								//q = q.whereRaw(value.$raw);
+								q = q + 'IMPLEMENTAR';
+							} else if (typeof value.$raw == "object") {
+								//q = q.whereRaw(value.$raw.condition, value.$raw.bindings);
+								q = q + 'IMPLEMENTAR';
+							}
 						}
+					} else {
+						//q = q.where(key, value);
+						// if(keyIsString)
+						// 	q = q + keyColumn + " = '" + value + "' AND ";
+						// else{
+							if(key != 'DELETED'){
+								if(keyValue != 'IS NULL')
+									q = q + keyColumn + ' = ' + keyValue + ' AND ';
+								else
+									q = q + keyColumn + ' ' + keyValue + ' AND ';
+							}
+							
+						// }
 					}
-				} else {
-					//q = q.where(key, value);
-					if(keyIsString)
-						q = q + keyColumn + " = '" + value + "' AND ";
-					else{
-						if(key != 'DELETED')
-							q = q + keyColumn + ' = ' + value + ' AND ';
-						
+				}
+				if(key == "$or"){
+					//TODO: Ajustar para o operador or funcionar corretamente
+					//Atualmente o db.mixin adiciona o operador or para os valores DELETED como false ou null
+					//Caso seja enviado um novo or, o conteúdo de todos é combinado, gerando valores incorretos.
+					//Atualmente, o adapter do mongo está retornando apenas o primeiro valor de um segundo filtro por or.
+
+					if(value && value.length > 0){
+						q = q + " ( ";
+						Object.entries(value).forEach(([orArrayKey, orArrayValue]) => {
+						Object.entries(orArrayValue).forEach(([orKey, orValue]) => {
+							let orKeyDef = this.service.$fields.find((orElem) => orElem?.columnName == orKey);
+							if(orKeyDef){
+								let orKeyColumn = this.columnName(orKey);
+								let orKeyValue = this.columnValue(orKeyDef, orValue);
+								if (typeof orValue == "object" && orValue != null) {
+									//IMPLEMENTAR OPERADORES
+								}
+								else {
+									if(orKeyValue != 'IS NULL')
+										q = q + orKeyColumn + ' = ' + orKeyValue + ' OR ';
+									else
+										q = q + orKeyColumn + ' ' + orKeyValue + ' OR ';
+								}
+							}
+						})
+						});
+						if(q.substring(q.length -2, q.length) != "( ")
+							q = q.substring(0, q.length - 3) + ") AND ";
+						else
+							q = q.substring(0, q.length - 3);
 					}
 				}
 			});
@@ -769,6 +868,23 @@ class HDBAdapter extends BaseAdapter {
 			default: 
 				return fieldName;
 		}
+	}
+
+	columnValue(columnDef, value){
+		if(columnDef && columnDef?.columnType)
+		{
+			switch (columnDef.columnType) {
+				case 'string':
+				case 'email':
+					return "'" + value + "'";
+				case 'boolean':
+					if(value == undefined || value == 'undefined' || value == 'null' || value == 'NULL' || value == null)
+						return 'IS NULL'
+					else return value;
+				default: return value;
+			}
+		}
+		return value;
 	}
 }
 
